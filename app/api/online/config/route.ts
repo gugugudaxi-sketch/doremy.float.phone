@@ -1,3 +1,4 @@
+import { isSelfHostedModeEnabled } from "@/lib/self-hosting";
 import { NextResponse } from "next/server";
 
 import { getSupabaseServerConfig } from "@/lib/server/supabase-rest";
@@ -16,11 +17,12 @@ export async function GET() {
   const config = getSupabaseServerConfig();
   const anonKey = (process.env.SUPABASE_ANON_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "").trim();
   if (!config || !anonKey) {
-    return NextResponse.json({ ok: true, configured: false }, { headers: CACHE_HEADERS });
+    return NextResponse.json({ ok: true, configured: false, shellPushSupported: !isSelfHostedModeEnabled() }, { headers: CACHE_HEADERS });
   }
   return NextResponse.json({
     ok: true,
     configured: true,
+    shellPushSupported: !isSelfHostedModeEnabled(),
     supabaseUrl: config.url,
     anonKey,
   }, { headers: CACHE_HEADERS });

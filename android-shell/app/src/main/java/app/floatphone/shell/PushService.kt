@@ -60,6 +60,13 @@ class PushService : Service() {
         .readTimeout(0, TimeUnit.MILLISECONDS)
         .build()
 
+    // HTTP capability checks must not inherit the socket's infinite read timeout.
+    private val configClient = client.newBuilder()
+        .connectTimeout(5, TimeUnit.SECONDS)
+        .readTimeout(10, TimeUnit.SECONDS)
+        .callTimeout(15, TimeUnit.SECONDS)
+        .build()
+
     /** 拉取远程头像用；超时压短，拿不到就退回默认图标，绝不能拖住通知。 */
     private val avatarClient = OkHttpClient.Builder()
         .connectTimeout(5, TimeUnit.SECONDS)
@@ -67,7 +74,11 @@ class PushService : Service() {
         .build()
 
     private var socket: WebSocket? = null
-    private var stopped = false
+    @Volatile private var stopped = false
+    private var pushUnsupported = false
+    private var configStatus = "后台推送暂时不可用，稍后重试"
+    private var lastKeepAliveText: String? = null
+    private var configRetrySec = 60L
     private var msgSeq = 2
     private var notifId = 100
     private var shellSubRegistered = false
@@ -97,8 +108,17 @@ class PushService : Service() {
         while (!stopped) {
             val config = fetchConfig()
             if (config == null) {
-                updateKeepAlive("未登录或站点不可达，稍后重试")
-                sleepSec(60); continue
+                if (pushUnsupported) {
+                    // Shared-key/self-hosted mode has no cloud account channel.
+                    // Stop only this unused cloud service; WebView notifications,
+                    // overlays and other native services remain independent.
+                    stopped = true
+                    stopForeground(STOP_FOREGROUND_REMOVE)
+                    stopSelf()
+                    return
+                }
+                updateKeepAlive(configStatus)
+                sleepSec(configRetrySec); continue
             }
             updateKeepAlive("已连接，等待角色消息")
             val closedNormally = runSocket(config)
@@ -118,6 +138,8 @@ class PushService : Service() {
         // 可能完全没有 Cookie。此前这里 `?: return null` 把这种正常情况直接判成
         // 「未登录」，壳于是永远拿不到配置、常驻通知停在「未登录或站点不可达」。
         // 改为：Cookie 缺失也照常请求，放不放行交给服务端裁决。
+        configRetrySec = 60L
+        configStatus = "后台推送暂时无法连接，稍后重试"
         val cookie = CookieManager.getInstance().getCookie(MainActivity.SITE_URL).orEmpty()
 
         fun getJson(path: String): JSONObject? {
@@ -127,17 +149,32 @@ class PushService : Service() {
             // 空 Cookie 头可能被服务端/WAF 拒绝，为空时干脆不带这个头。
             if (cookie.isNotEmpty()) builder.header("Cookie", cookie)
             val request = builder.build()
-            client.newCall(request).execute().use { response ->
-                if (!response.isSuccessful) return null
+            configClient.newCall(request).execute().use { response ->
+                if (!response.isSuccessful) {
+                    if (response.code == 401) configRetrySec = 5L
+                    configStatus = if (response.code == 401) "后台推送等待访问授权" else "后台推送请求失败（HTTP ${response.code}）"
+                    return null
+                }
                 return JSONObject(response.body?.string() ?: return null)
             }
         }
 
+        // Capabilities first: a missing cloud account is not a lost access session.
+        val online = getJson("/api/online/config") ?: return null
+        if (online.has("shellPushSupported") && !online.optBoolean("shellPushSupported")) {
+            pushUnsupported = true
+            return null
+        }
+        if (!online.optBoolean("configured")) {
+            configStatus = "云端离线推送未配置"
+            return null
+        }
         val me = getJson("/api/auth/me") ?: return null
         val userId = me.optJSONObject("account")?.optString("id").orEmpty()
-        if (userId.isEmpty()) return null
-        val online = getJson("/api/online/config") ?: return null
-        if (!online.optBoolean("configured")) return null
+        if (userId.isEmpty()) {
+            configStatus = "云端离线推送需要账号登录"
+            return null
+        }
         val url = online.optString("supabaseUrl")
         val key = online.optString("anonKey")
         if (url.isEmpty() || key.isEmpty()) return null
@@ -166,7 +203,7 @@ class PushService : Service() {
                 .post(body)
             if (cookie.isNotEmpty()) builder.header("Cookie", cookie)
             val request = builder.build()
-            client.newCall(request).execute().use { response ->
+            configClient.newCall(request).execute().use { response ->
                 if (response.isSuccessful) shellSubRegistered = true
             }
         }
@@ -311,11 +348,15 @@ class PushService : Service() {
             .setContentTitle("小手机")
             .setContentText(text)
             .setOngoing(true)
+            .setOnlyAlertOnce(true)
+            .setSilent(true)
             .setContentIntent(contentIntent())
             .setPriority(NotificationCompat.PRIORITY_MIN)
             .build()
 
     private fun updateKeepAlive(text: String) {
+        if (lastKeepAliveText == text) return
+        lastKeepAliveText = text
         getSystemService(NotificationManager::class.java)
             .notify(NOTIF_FG_ID, buildKeepAliveNotification(text))
     }

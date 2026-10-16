@@ -9,6 +9,7 @@
 // 网页侧在这里再注册一次：能拿到账号 id、能看到返回码，幂等且可自愈。壳原生
 // 那次成功时这里只是一次覆盖写，无副作用。
 
+import { isSelfHostedModeEnabled } from "@/lib/self-hosting";
 import { useEffect } from "react";
 
 import { ensureShellSubscription, isShellEnvironment } from "@/lib/push-client";
@@ -17,7 +18,7 @@ import { startUserShotBridge, syncScreenshotShareTargets } from "@/lib/screensho
 
 export function ShellPushRegistrar() {
   useEffect(() => {
-    if (!isShellEnvironment()) return;
+    if (!isShellEnvironment() || isSelfHostedModeEnabled()) return;
     void ensureShellSubscription();
   }, []);
 
