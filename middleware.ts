@@ -1,3 +1,4 @@
+import { ACCESS_COOKIE, verifyAccessSession } from "./lib/access/session";
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 
@@ -58,6 +59,23 @@ function rewriteToHome(request: NextRequest): NextResponse {
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
+  // Fixed-key gate runs FIRST, even in self-hosted mode and for old public APIs.
+  // No extension-based exemption here: /api/foo.json is still an API.
+  const accessPublic = pathname === "/access" || pathname === "/api/access/session";
+  const asset = !pathname.startsWith("/api/") && request.method === "GET" &&
+    (pathname.startsWith("/_next/static/") || pathname.startsWith("/_next/image") ||
+      isStaticRoute(pathname) || pathname === "/sw.js");
+  if (accessPublic || asset) return NextResponse.next();
+  if (!(await verifyAccessSession(request.cookies.get(ACCESS_COOKIE)?.value ?? ""))) {
+    if (isApiRoute(pathname)) return NextResponse.json(
+      { ok: false, error: "请先验证访问密钥。" },
+      { status: 401, headers: { "Cache-Control": "private, no-store" } },
+    );
+    return NextResponse.redirect(new URL("/access", request.url), {
+      headers: { "Cache-Control": "private, no-store" },
+    });
+  }
+
   if (isSelfHostedModeEnabled()) {
     return NextResponse.next();
   }
@@ -86,8 +104,4 @@ export async function middleware(request: NextRequest) {
   return rewriteToHome(request);
 }
 
-export const config = {
-  matcher: [
-    "/((?!_next/static|_next/image|.*\\.(?:avif|bin|css|gif|glb|gltf|hdr|ico|jpeg|jpg|js|json|map|mjs|mp3|ogg|otf|png|svg|ttf|txt|wasm|wav|webmanifest|webp|woff|woff2)$).*)",
-  ],
-};
+export const config = { matcher: ["/:path*"] };

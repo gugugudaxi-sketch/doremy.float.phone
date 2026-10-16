@@ -8,8 +8,8 @@ import { getSupabaseServerConfig } from "@/lib/server/supabase-rest";
 // 响应只由环境变量决定,同一部署内恒定:CDN 缓存 1 小时,把每个客户端启动时的
 // 这次函数调用合并掉(改环境变量后重新部署即生效,最坏晚 1 小时)。
 const CACHE_HEADERS = {
-  "Cache-Control": "public, max-age=0, must-revalidate",
-  "Netlify-CDN-Cache-Control": "public, durable, s-maxage=3600, stale-while-revalidate=86400",
+  "Cache-Control": "private, no-store",
+  "Netlify-CDN-Cache-Control": "private, no-store",
 } as const;
 
 export async function GET() {

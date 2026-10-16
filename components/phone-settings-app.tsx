@@ -482,6 +482,11 @@ export function PhoneSettingsApp({ onClose, onNotice }: SettingsPageProps) {
             <PageShell title={title} onBack={handleBack} rightAction={currentPage !== "main" ? subpageRightActions[currentPage] : undefined} bodyRef={pageBodyRef}>
                 {currentPage === "main" && (
                     <div className="page-menu settings-main-menu">
+                        <a className="settings-account-card" href="/access">
+                            <span className="settings-account-avatar"><KeyRound size={22} /></span>
+                            <span className="settings-account-copy"><span className="settings-account-name">访问授权</span><span className="settings-account-sub">退出授权 / 重新验证密钥</span></span>
+                            <ChevronRight size={18} />
+                        </a>
                         {!selfHostedMode && (
                             <button type="button" className="settings-account-card" onClick={() => setAccountSheetOpen(true)}>
                                 <span className="settings-account-avatar"><GlassIcon name="account" /></span>

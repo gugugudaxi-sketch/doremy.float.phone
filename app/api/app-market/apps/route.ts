@@ -45,8 +45,8 @@ function stripPackageLinkForViewer(app: CustomAppMarketItem | null, viewerId?: s
  * 浏览器端不缓存（max-age=0），保证拿到的永远是边缘的最新副本。
  */
 const CDN_LIST_CACHE_HEADERS = {
-  "Cache-Control": "public, max-age=0, must-revalidate",
-  "Netlify-CDN-Cache-Control": "public, durable, s-maxage=120, stale-while-revalidate=600",
+  "Cache-Control": "private, no-store",
+  "Netlify-CDN-Cache-Control": "private, no-store",
   // 必须显式让缓存键包含查询参数：Netlify 对函数响应默认忽略 query，
   // 不加这行，公共列表的缓存会顶掉 mine=1/appId/admin 等所有其他查询的响应
   "Netlify-Vary": "query",

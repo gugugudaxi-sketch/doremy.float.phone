@@ -34,8 +34,8 @@ export async function GET(request: Request) {
     }
     const cacheHeaders: Record<string, string> = isPublic
       ? {
-        "Cache-Control": "public, max-age=31536000, immutable",
-        "Netlify-CDN-Cache-Control": "public, durable, s-maxage=31536000, immutable",
+        "Cache-Control": "private, no-store",
+        "Netlify-CDN-Cache-Control": "private, no-store",
         "Netlify-Vary": "query",
       }
       : { "Cache-Control": "private, max-age=300" };

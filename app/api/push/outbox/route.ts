@@ -30,8 +30,8 @@ function cachedSharedPushDisabledResponse() {
     {
       status: 503,
       headers: {
-        "Cache-Control": "public, max-age=3600",
-        "Netlify-CDN-Cache-Control": "public, durable, s-maxage=86400",
+        "Cache-Control": "private, no-store",
+        "Netlify-CDN-Cache-Control": "private, no-store",
       },
     },
   );

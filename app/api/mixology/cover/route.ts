@@ -39,8 +39,8 @@ function decodeDataUrl(value: string): { mime: string; bytes: Buffer } | null {
 }
 
 const IMMUTABLE_HEADERS = {
-  "Cache-Control": "public, max-age=31536000, immutable",
-  "Netlify-CDN-Cache-Control": "public, durable, s-maxage=31536000, immutable",
+  "Cache-Control": "private, no-store",
+  "Netlify-CDN-Cache-Control": "private, no-store",
   "Netlify-Vary": "query",
 } as const;
 

@@ -1,3 +1,4 @@
+import { AccessSessionGuard } from "@/components/access-session-guard";
 import { ShellBackController } from "@/components/shell-back-controller";
 import type { Metadata, Viewport } from "next";
 import type { ReactNode } from "react";
@@ -45,6 +46,7 @@ export default function RootLayout({
         <meta name="mobile-web-app-capable" content="yes" />
       </head>
       <body>
+        <AccessSessionGuard />
         <ShellBackController />
         <PWAManifestInjector />
         <PWARegistrar />
