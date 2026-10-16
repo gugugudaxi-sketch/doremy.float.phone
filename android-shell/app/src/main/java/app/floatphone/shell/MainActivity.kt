@@ -56,7 +56,7 @@ class MainActivity : AppCompatActivity() {
 
     companion object {
         val SITE_URL: String = BuildConfig.SITE_URL
-        const val VERSION = "1.0.10"
+        val VERSION: String = BuildConfig.VERSION_NAME
         /** 来电接听等场景的站内深链（必须以 SITE_URL 开头，否则忽略） */
         const val EXTRA_OPEN_URL = "open_url"
         /** 外部 App（如桌宠）唤起本壳用的自定义 scheme：floatshell://open?url=<站内地址> */
@@ -73,40 +73,85 @@ class MainActivity : AppCompatActivity() {
     private lateinit var webView: WebView
     private var filePathCallback: ValueCallback<Array<Uri>>? = null
 
-    // 只识别从左侧狭窄边缘开始的单指右滑，普通聊天滚动与中间区域横滑不受影响。
+    // Edge touch fallback for devices whose system gesture does not reach Back.
+    // Once horizontal intent is clear, cancel WebView's touch stream before acting.
     private var edgeSwipeStartX = 0f
     private var edgeSwipeStartY = 0f
     private var edgeSwipeTracking = false
+    private var edgeSwipeClaimed = false
+    private var edgeGestureId = 0
+    private var lastBackAt = 0L
+    private var backPending = false
 
-    /**
-     * 安卓壳全屏时部分设备不会自动派发系统边缘返回。
-     * 在 Activity 层观察事件，不拦截 WebView 的正常点击与触摸；
-     * 只在一次明显的左缘右滑结束时复用已有的返回分发器。
-     */
     override fun dispatchTouchEvent(event: MotionEvent): Boolean {
         val density = resources.displayMetrics.density
         when (event.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
                 edgeSwipeStartX = event.x
                 edgeSwipeStartY = event.y
-                edgeSwipeTracking = event.pointerCount == 1 && event.x <= 28f * density
-            }
-            MotionEvent.ACTION_POINTER_DOWN, MotionEvent.ACTION_CANCEL -> edgeSwipeTracking = false
-            MotionEvent.ACTION_UP -> {
-                val shouldGoBack = edgeSwipeTracking &&
-                    event.x - edgeSwipeStartX >= 88f * density &&
-                    kotlin.math.abs(event.y - edgeSwipeStartY) <=
-                        (event.x - edgeSwipeStartX) * 0.65f
+                edgeGestureId++
+                val gestureId = edgeGestureId
                 edgeSwipeTracking = false
-                val handled = super.dispatchTouchEvent(event)
-                if (shouldGoBack && ::webView.isInitialized && webView.canGoBack()) {
-                    onBackPressedDispatcher.onBackPressed()
-                    return true
+                edgeSwipeClaimed = false
+                if (event.pointerCount == 1 && event.x <= 20f * density && imeInsetPx == 0 && ::webView.isInitialized) {
+                    val x = event.x / density
+                    val y = event.y / density
+                    webView.evaluateJavascript("(typeof window.floatShellCanStartBack==='function' && window.floatShellCanStartBack($x,$y))") { eligible ->
+                        if (gestureId == edgeGestureId) edgeSwipeTracking = eligible == "true"
+                    }
                 }
-                return handled
+            }
+            MotionEvent.ACTION_POINTER_DOWN -> { edgeGestureId++; edgeSwipeTracking = false }
+            MotionEvent.ACTION_MOVE -> {
+                val dx = event.x - edgeSwipeStartX
+                val dy = kotlin.math.abs(event.y - edgeSwipeStartY)
+                if (edgeSwipeTracking && !edgeSwipeClaimed) {
+                    if (dy > 12f * density && dy > dx * 0.5f || dx < -12f * density) edgeSwipeTracking = false
+                    else if (dx > 24f * density && dy < dx * 0.4f) {
+                        edgeSwipeClaimed = true
+                        val cancel = MotionEvent.obtain(event)
+                        cancel.action = MotionEvent.ACTION_CANCEL
+                        super.dispatchTouchEvent(cancel)
+                        cancel.recycle()
+                    }
+                }
+                if (edgeSwipeClaimed) return true
+            }
+            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                edgeGestureId++
+                val claimed = edgeSwipeClaimed
+                val back = event.actionMasked == MotionEvent.ACTION_UP && claimed &&
+                    event.x - edgeSwipeStartX >= 80f * density &&
+                    kotlin.math.abs(event.y - edgeSwipeStartY) < (event.x - edgeSwipeStartX) * 0.4f
+                edgeSwipeTracking = false
+                edgeSwipeClaimed = false
+                if (back) requestWebBack()
+                if (claimed) return true
             }
         }
         return super.dispatchTouchEvent(event)
+    }
+
+    private fun requestWebBack() {
+        val now = android.os.SystemClock.elapsedRealtime()
+        if (backPending || now - lastBackAt < 400L) return
+        lastBackAt = now
+        if (imeInsetPx > 0) {
+            WindowInsetsControllerCompat(window, rootContainer).hide(WindowInsetsCompat.Type.ime())
+            return
+        }
+        backPending = true
+        webView.evaluateJavascript("(function(){try{return typeof window.floatShellBack==='function' ? window.floatShellBack() : null;}catch(e){return null;}})()") { result ->
+            backPending = false
+            // No JS handler (loading/login) is deliberately a no-op. Never exit.
+            if (result == "false" && webView.canGoBack()) {
+                val list = webView.copyBackForwardList()
+                val previous = list.getItemAtIndex(list.currentIndex - 1)?.url
+                val current = Uri.parse(SITE_URL)
+                val target = previous?.let { Uri.parse(it) }
+                if (target?.scheme == current.scheme && target.host == current.host && target.port == current.port) webView.goBack()
+            }
+        }
     }
 
     /** 系统状态栏实际高度（CSS px，即物理像素 / density），实时更新。 */
@@ -412,7 +457,7 @@ class MainActivity : AppCompatActivity() {
 
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
             override fun handleOnBackPressed() {
-                if (webView.canGoBack()) webView.goBack() else moveTaskToBack(true)
+                requestWebBack()
             }
         })
 
