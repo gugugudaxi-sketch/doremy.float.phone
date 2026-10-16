@@ -20,6 +20,7 @@ import android.os.Environment
 import android.provider.MediaStore
 import android.provider.Settings
 import android.util.Base64
+import android.view.MotionEvent
 import android.view.WindowManager
 import androidx.core.app.NotificationCompat
 import okhttp3.OkHttpClient
@@ -71,6 +72,42 @@ class MainActivity : AppCompatActivity() {
     private lateinit var rootContainer: FrameLayout
     private lateinit var webView: WebView
     private var filePathCallback: ValueCallback<Array<Uri>>? = null
+
+    // 只识别从左侧狭窄边缘开始的单指右滑，普通聊天滚动与中间区域横滑不受影响。
+    private var edgeSwipeStartX = 0f
+    private var edgeSwipeStartY = 0f
+    private var edgeSwipeTracking = false
+
+    /**
+     * 安卓壳全屏时部分设备不会自动派发系统边缘返回。
+     * 在 Activity 层观察事件，不拦截 WebView 的正常点击与触摸；
+     * 只在一次明显的左缘右滑结束时复用已有的返回分发器。
+     */
+    override fun dispatchTouchEvent(event: MotionEvent): Boolean {
+        val density = resources.displayMetrics.density
+        when (event.actionMasked) {
+            MotionEvent.ACTION_DOWN -> {
+                edgeSwipeStartX = event.x
+                edgeSwipeStartY = event.y
+                edgeSwipeTracking = event.pointerCount == 1 && event.x <= 28f * density
+            }
+            MotionEvent.ACTION_POINTER_DOWN, MotionEvent.ACTION_CANCEL -> edgeSwipeTracking = false
+            MotionEvent.ACTION_UP -> {
+                val shouldGoBack = edgeSwipeTracking &&
+                    event.x - edgeSwipeStartX >= 88f * density &&
+                    kotlin.math.abs(event.y - edgeSwipeStartY) <=
+                        (event.x - edgeSwipeStartX) * 0.65f
+                edgeSwipeTracking = false
+                val handled = super.dispatchTouchEvent(event)
+                if (shouldGoBack && ::webView.isInitialized && webView.canGoBack()) {
+                    onBackPressedDispatcher.onBackPressed()
+                    return true
+                }
+                return handled
+            }
+        }
+        return super.dispatchTouchEvent(event)
+    }
 
     /** 系统状态栏实际高度（CSS px，即物理像素 / density），实时更新。 */
     @Volatile
