@@ -5,7 +5,21 @@ const headers = { "Cache-Control": "private, no-store" };
 // Local defence as well as Netlify's distributed IP limiter. Bounded and expiring.
 const attempts = new Map<string, { count: number; until: number }>();
 function sameOrigin(request: NextRequest) {
-  return request.headers.get("origin") === request.nextUrl.origin;
+  const origin = request.headers.get("origin");
+  if (!origin) return false;
+  let parsed: URL;
+  try { parsed = new URL(origin); } catch { return false; }
+  if (parsed.origin !== origin || (parsed.protocol !== "https:" && parsed.hostname !== "localhost")) return false;
+
+  // On Netlify, NextRequest.nextUrl may reflect the internal proxy host instead
+  // of the site's public domain. Check the public site URL and request Host too.
+  const allowed = [process.env.URL, process.env.DEPLOY_PRIME_URL, request.nextUrl.origin];
+  const host = request.headers.get("host");
+  if (host) allowed.push(`https://${host}`);
+  return allowed.some(value => {
+    if (!value) return false;
+    try { return new URL(value).origin === parsed.origin; } catch { return false; }
+  });
 }
 export async function GET(request: NextRequest) {
   return NextResponse.json({ authorized: await verifyAccessSession(request.cookies.get(ACCESS_COOKIE)?.value ?? "") }, { headers });
