@@ -12,7 +12,7 @@ Netlify 生产环境变量（Builds 和 Functions 作用域）：
 设置 → 访问授权可以退出并重新验证，不清除本地存档。
 
 GitHub Repository secrets：`SHELL_SITE_URL`，填写完整 HTTPS 部署地址。
-工作流不接受明文输入或 Variables；缺少 Secret 时明确停止。
+工作流不接受明文输入或 Variables；缺少 Secret 时仅以无效占位域名编译检查 Kotlin，随后明确停止，不打包或上传无效 APK。
 签名继续沿用可选的 `SHELL_KEYSTORE_BASE64`、`SHELL_KEYSTORE_PASSWORD`、`SHELL_KEY_ALIAS`、`SHELL_KEY_PASSWORD`，不自动生成正式签名。
 
 ## 返回机制

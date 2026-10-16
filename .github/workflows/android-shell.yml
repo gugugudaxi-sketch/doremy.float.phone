@@ -17,17 +17,6 @@ jobs:
       SHELL_KEY_PASSWORD: ${{ secrets.SHELL_KEY_PASSWORD }}
       SHELL_SITE_URL: ${{ secrets.SHELL_SITE_URL }}
     steps:
-      - name: Validate private site configuration
-        shell: bash
-        run: |
-          python3 - <<'PYCONFIG'
-          import os, urllib.parse
-          value = os.environ.get("SHELL_SITE_URL", "")
-          parsed = urllib.parse.urlparse(value)
-          if parsed.scheme != "https" or not parsed.hostname or parsed.username or parsed.password or parsed.query or parsed.fragment:
-              raise SystemExit("Configure the SHELL_SITE_URL repository secret with an HTTPS site URL.")
-          PYCONFIG
-
       - uses: actions/checkout@v4
 
       - uses: actions/setup-java@v4
@@ -46,6 +35,24 @@ jobs:
         run: |
           echo "$SHELL_KEYSTORE_BASE64" | base64 -d > /tmp/shell.keystore
           echo "SHELL_KEYSTORE_FILE=/tmp/shell.keystore" >> "$GITHUB_ENV"
+
+      # With no address configured, compile Kotlin only; never publish an unusable APK.
+      - name: Compile-check while site secret is missing
+        if: ${{ env.SHELL_SITE_URL == '' }}
+        env:
+          SHELL_SITE_URL: https://example.invalid
+        run: gradle -p android-shell compileDebugKotlin
+
+      - name: Validate private site configuration
+        shell: bash
+        run: |
+          python3 - <<'PYCONFIG'
+          import os, urllib.parse
+          value = os.environ.get("SHELL_SITE_URL", "")
+          parsed = urllib.parse.urlparse(value)
+          if parsed.scheme != "https" or not parsed.hostname or parsed.username or parsed.password or parsed.query or parsed.fragment:
+              raise SystemExit("Configure the SHELL_SITE_URL repository secret with an HTTPS site URL.")
+          PYCONFIG
 
       - name: Build APKs
         run: gradle -p android-shell assembleDebug assembleRelease
