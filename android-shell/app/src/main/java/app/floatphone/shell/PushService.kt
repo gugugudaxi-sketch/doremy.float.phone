@@ -75,7 +75,6 @@ class PushService : Service() {
 
     private var socket: WebSocket? = null
     @Volatile private var stopped = false
-    private var pushUnsupported = false
     private var configStatus = "后台推送暂时不可用，稍后重试"
     private var lastKeepAliveText: String? = null
     private var configRetrySec = 60L
@@ -108,15 +107,6 @@ class PushService : Service() {
         while (!stopped) {
             val config = fetchConfig()
             if (config == null) {
-                if (pushUnsupported) {
-                    // Shared-key/self-hosted mode has no cloud account channel.
-                    // Stop only this unused cloud service; WebView notifications,
-                    // overlays and other native services remain independent.
-                    stopped = true
-                    stopForeground(STOP_FOREGROUND_REMOVE)
-                    stopSelf()
-                    return
-                }
                 updateKeepAlive(configStatus)
                 sleepSec(configRetrySec); continue
             }
@@ -162,7 +152,10 @@ class PushService : Service() {
         // Capabilities first: a missing cloud account is not a lost access session.
         val online = getJson("/api/online/config") ?: return null
         if (online.has("shellPushSupported") && !online.optBoolean("shellPushSupported")) {
-            pushUnsupported = true
+            // Retain the foreground service's keep-alive role, without treating
+            // the absence of a cloud account as a lost website login.
+            configStatus = "本地模式 · 后台运行中"
+            configRetrySec = 900L
             return null
         }
         if (!online.optBoolean("configured")) {
