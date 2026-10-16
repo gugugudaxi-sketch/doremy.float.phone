@@ -39,9 +39,7 @@ jobs:
       # With no address configured, compile Kotlin only; never publish an unusable APK.
       - name: Compile-check while site secret is missing
         if: ${{ env.SHELL_SITE_URL == '' }}
-        env:
-          SHELL_SITE_URL: https://example.invalid
-        run: gradle -p android-shell compileDebugKotlin
+        run: SHELL_SITE_URL=https://example.invalid gradle -p android-shell compileDebugKotlin
 
       - name: Validate private site configuration
         shell: bash
