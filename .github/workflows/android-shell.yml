@@ -2,11 +2,6 @@ name: Build Android Shell APK
 
 on:
   workflow_dispatch:
-    inputs:
-      site_url:
-        description: "要加载的自部署站点地址（https://…）"
-        required: false
-        type: string
   push:
     branches: [main]
     paths: ["android-shell/**", ".github/workflows/android-shell.yml"]
@@ -22,6 +17,17 @@ jobs:
       SHELL_KEY_PASSWORD: ${{ secrets.SHELL_KEY_PASSWORD }}
       SHELL_SITE_URL: ${{ secrets.SHELL_SITE_URL }}
     steps:
+      - name: Validate private site configuration
+        shell: bash
+        run: |
+          python3 - <<'PYCONFIG'
+          import os, urllib.parse
+          value = os.environ.get("SHELL_SITE_URL", "")
+          parsed = urllib.parse.urlparse(value)
+          if parsed.scheme != "https" or not parsed.hostname or parsed.username or parsed.password or parsed.query or parsed.fragment:
+              raise SystemExit("Configure the SHELL_SITE_URL repository secret with an HTTPS site URL.")
+          PYCONFIG
+
       - uses: actions/checkout@v4
 
       - uses: actions/setup-java@v4
@@ -43,6 +49,15 @@ jobs:
 
       - name: Build APKs
         run: gradle -p android-shell assembleDebug assembleRelease
+
+      - name: Report signing mode
+        shell: bash
+        run: |
+          if [ -n "$SHELL_KEYSTORE_BASE64" ]; then
+            echo "Existing configured keystore used; package remains app.floatphone.shell." >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "Debug APK uses this runner's temporary debug certificate. Compatibility with old installs is NOT guaranteed. Export in-app data before any migration. Release APK is unsigned; no new production key was generated." >> "$GITHUB_STEP_SUMMARY"
+          fi
 
       - name: Upload debug APK
         uses: actions/upload-artifact@v4

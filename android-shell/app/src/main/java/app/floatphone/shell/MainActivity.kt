@@ -106,7 +106,7 @@ class MainActivity : AppCompatActivity() {
                 val dx = event.x - edgeSwipeStartX
                 val dy = kotlin.math.abs(event.y - edgeSwipeStartY)
                 if (edgeSwipeTracking && !edgeSwipeClaimed) {
-                    if (dy > 12f * density && dy > dx * 0.5f || dx < -12f * density) edgeSwipeTracking = false
+                    if (dy > 12f * density && dy > dx * 0.5f || dx < -12f * density) { edgeGestureId++; edgeSwipeTracking = false }
                     else if (dx > 24f * density && dy < dx * 0.4f) {
                         edgeSwipeClaimed = true
                         val cancel = MotionEvent.obtain(event)
@@ -120,7 +120,7 @@ class MainActivity : AppCompatActivity() {
             MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
                 edgeGestureId++
                 val claimed = edgeSwipeClaimed
-                val back = event.actionMasked == MotionEvent.ACTION_UP && claimed &&
+                val back = event.actionMasked == MotionEvent.ACTION_UP && claimed && edgeSwipeTracking &&
                     event.x - edgeSwipeStartX >= 80f * density &&
                     kotlin.math.abs(event.y - edgeSwipeStartY) < (event.x - edgeSwipeStartX) * 0.4f
                 edgeSwipeTracking = false
@@ -138,6 +138,7 @@ class MainActivity : AppCompatActivity() {
         lastBackAt = now
         if (imeInsetPx > 0) {
             WindowInsetsControllerCompat(window, rootContainer).hide(WindowInsetsCompat.Type.ime())
+            webView.evaluateJavascript("document.activeElement && document.activeElement.blur()", null)
             return
         }
         backPending = true
@@ -149,7 +150,7 @@ class MainActivity : AppCompatActivity() {
                 val previous = list.getItemAtIndex(list.currentIndex - 1)?.url
                 val current = Uri.parse(SITE_URL)
                 val target = previous?.let { Uri.parse(it) }
-                if (target?.scheme == current.scheme && target.host == current.host && target.port == current.port) webView.goBack()
+                if (target != null && target.scheme == current.scheme && target.host == current.host && target.port == current.port) webView.goBack()
             }
         }
     }

@@ -6,7 +6,13 @@ plugins {
 // 签名：CI 里通过环境变量注入 keystore（见 android-shell/README.md）；
 // 没有配置时 release 构建产出未签名 APK，debug 构建始终可直接安装测试。
 def ksFile = System.getenv("SHELL_KEYSTORE_FILE")
-def siteUrl = (System.getenv("SHELL_SITE_URL") ?: "https://example.invalid").replaceAll('/+$', '')
+def siteUrl = (System.getenv("SHELL_SITE_URL") ?: "").replaceAll('/+$', '')
+def parsedSite
+try { parsedSite = new URI(siteUrl) }
+catch (Exception ignored) { throw new GradleException("SHELL_SITE_URL must be a valid HTTPS site URL.") }
+if (parsedSite.scheme != 'https' || !parsedSite.host || parsedSite.userInfo || parsedSite.query || parsedSite.fragment) {
+    throw new GradleException("Set SHELL_SITE_URL to the HTTPS deployment URL before building.")
+}
 
 android {
     namespace 'app.floatphone.shell'
@@ -26,9 +32,9 @@ android {
         // 1.0.10：浮窗改圆角矩形；浮窗左上角显示「待发 N」角标。
         // 1.0.11：截屏与主动查岗（含查岗浮层回复框）；通知栏「直接回复」。
         // 1.0.12：截屏可选收件人；位置感知；睡眠（Health Connect）。
-        versionCode 11
-        versionName "1.0.12"
-        buildConfigField "String", "SITE_URL", "\"${siteUrl}\""
+        versionCode 12
+        versionName "1.0.13"
+        buildConfigField "String", "SITE_URL", groovy.json.JsonOutput.toJson(siteUrl)
     }
 
     buildFeatures { buildConfig true }
