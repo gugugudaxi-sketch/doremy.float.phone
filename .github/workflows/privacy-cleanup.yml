@@ -19,12 +19,12 @@ jobs:
         env:
           PUBLISH_CLEANUP: 'true'
         run: python3 scripts/scrub-private-site-history.py
-      - name: Remove the two approved historical plaintext logs
+      - name: Remove the two obsolete public build records
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           for run_id in 38900819385 38902649682; do
-            gh api --method DELETE "repos/$GITHUB_REPOSITORY/actions/runs/$run_id/logs"
+            gh api --method DELETE "repos/$GITHUB_REPOSITORY/actions/runs/$run_id"
           done
       - name: Record completion
-        run: echo "Historical private deployment defaults and the two old plaintext log archives were removed. The current source tree and the latest APK artifacts were preserved." >> "$GITHUB_STEP_SUMMARY"
+        run: echo "Historical private deployment defaults and the two obsolete public build records were removed. The current source tree and the latest APK artifacts were preserved." >> "$GITHUB_STEP_SUMMARY"
