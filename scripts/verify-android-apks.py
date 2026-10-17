@@ -12,9 +12,10 @@ expected = Path("android-shell/signing-certificate.sha256").read_text().strip().
 for variant in ("debug", "release"):
     apk = Path(f"android-shell/app/build/outputs/apk/{variant}/app-{variant}.apk")
     output = subprocess.run([str(tools[-1]), "verify", "--verbose", "--print-certs", str(apk)], capture_output=True, text=True, check=True).stdout
-    actual = re.search(r"Signer #1 certificate SHA-256 digest:\s*([0-9a-fA-F]+)", output)
-    if actual is None or actual.group(1).lower() != expected:
-        raise SystemExit("APK signing certificate mismatch; publication blocked.")
+    digests = re.findall(r"^Signer[^\\r\\n]* certificate SHA-256 digest:[ \\t]*([0-9a-fA-F]{64})[ \\t]*$", output, re.MULTILINE)
+    if not digests or any(value.lower() != expected for value in digests):
+        observed = ", ".join(value.upper() for value in digests) or "no recognized certificate digest"
+        raise SystemExit(f"{variant} APK signing certificate mismatch ({observed}); publication blocked.")
     print(f"Verified {variant} APK with pinned SHA-256 certificate.")
 with open(os.environ["GITHUB_STEP_SUMMARY"], "a") as summary:
     summary.write("Both APKs use the fixed signing certificate. Certificate SHA-256: `" + expected.upper() + "`.\n")
