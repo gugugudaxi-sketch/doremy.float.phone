@@ -16,66 +16,18 @@
 
 仓库已带工作流 `.github/workflows/android-shell.yml`：
 
-1. 在自己的 GitHub 仓库打开 **Settings → Secrets and variables → Actions → Variables**，新建变量 `SHELL_SITE_URL`，值填写你自己的 HTTPS 站点地址。手动运行工作流时也可以临时填写 `site_url`，它会覆盖仓库变量。
-2. 打开仓库 **Actions → Build Android Shell APK → Run workflow**，选择要构建的分支并运行。（自动触发规则以工作流文件中的配置为准。）
-3. 构建结束后，在该次运行页面底部的 **Artifacts** 下载：
-   - `float-shell-debug`：通常可以直接安装，适合测试；如果没有配置自己的密钥，它使用 GitHub Actions 本次运行生成的临时 debug 签名，不能保证后续构建仍可覆盖安装。
-   - `float-shell-release`：只有配置好下面的个人签名密钥后，才会生成可用于长期分发的已签名 release APK。未配置时不要把它当作可安装的正式包。
+1. 在仓库 **Settings → Secrets and variables → Actions → New repository secret** 设置 `SHELL_SITE_URL`，值为自己的 HTTPS 站点地址。不要使用公开 Variables 或工作流输入。
+2. 在同一页面设置 `SHELL_SIGNING_BUNDLE`，值为私下保存的签名备份 JSON 文件全文。它包含加密密钥库及密码，不能公开、截图或提交到仓库。
+3. 打开 **Actions → Build Android Shell APK → Run workflow**。工作流验证固定证书后才上传 APK。
+4. 下载 `float-shell-release`（正式安装包）或 `float-shell-debug`（调试包）。两者使用同一固定签名；建议后续保持使用同一种包。
 
-## 配置自己的 APK 签名（推荐长期使用或分享 APK 时设置）
+## 固定签名与更新
 
-**每个维护者都应使用自己保管的签名密钥。** 不要向别人索要或分享你的密钥，也不要把密钥文件、密码提交到 Git 仓库。Android 要覆盖更新已安装的应用，通常必须使用同一把签名密钥；密钥丢失后，旧应用可能无法直接升级，用户或许只能卸载重装（可能丢失本地数据）。
+仓库只保存公开证书指纹 `signing-certificate.sha256`。私钥由 GitHub Actions Secret 提供；缺少 Secret 或指纹不匹配时停止出包，不再退回临时签名。准备 Secret 后重新运行失败的工作流即可。
 
-### 第一步：在自己的电脑生成密钥库
+签名备份 JSON 包含 `keystoreBase64`、`storePassword`、`keyAlias`、`keyPassword`。请长期私下保管，另做安全备份，不要重新生成来覆盖它。GitHub 保存后不能直接读取 Secret；Netlify 环境变量也不会自动同步到 GitHub。
 
-电脑需要安装 JDK（含 `keytool`）。在终端运行：
-
-```bash
-keytool -genkeypair -v -keystore shell-release.jks -alias floatshell -keyalg RSA -keysize 2048 -validity 10000
-```
-
-按提示设置并妥善保存密钥库密码、密钥密码和别名。示例别名是 `floatshell`。请把生成的 `shell-release.jks` 和密码保存在安全位置，并另外做一份加密备份；不要上传到 GitHub 仓库。
-
-### 第二步：将密钥库转为 Base64
-
-Windows PowerShell 可在密钥库所在目录运行：
-
-```powershell
-[Convert]::ToBase64String([IO.File]::ReadAllBytes(".\shell-release.jks")) | Set-Clipboard
-```
-
-这会把 Base64 文本复制到剪贴板。它仍然等同于密钥文件本身，**不要发给别人或粘贴到公开位置**。
-
-Linux/macOS 可运行：
-
-```bash
-base64 < shell-release.jks | tr -d '\n'
-```
-
-### 第三步：在 GitHub Actions 添加四个 Repository secrets
-
-进入自己的仓库 **Settings → Secrets and variables → Actions → Repository secrets → New repository secret**，逐个添加：
-
-| Secret 名称 | 填写内容 |
-| --- | --- |
-| `SHELL_KEYSTORE_BASE64` | 第二步生成的完整 Base64 文本 |
-| `SHELL_KEYSTORE_PASSWORD` | 创建密钥库时设置的密钥库密码 |
-| `SHELL_KEY_ALIAS` | 创建时使用的别名，例如 `floatshell` |
-| `SHELL_KEY_PASSWORD` | 对应别名的密钥密码；若创建时使用相同密码，就填相同值 |
-
-请将四项都配置完整。GitHub Secrets 的值创建后不会正常显示出来，只需确认名称存在，不要截图或分享具体值。**Netlify 的环境变量与 GitHub Actions secrets 是两套独立配置**，在 Netlify 添加变量不会自动配置 APK 签名。
-
-### 第四步：重新构建并验证
-
-1. 重新运行 **Build Android Shell APK** 工作流。
-2. 检查日志中是否成功执行 `Decode keystore (optional)`，并确认后续 APK 构建成功。
-3. 下载 `float-shell-release`，用 Android SDK Build Tools 提供的 `apksigner` 验证：
-   ```bash
-   apksigner verify --verbose --print-certs app-release.apk
-   ```
-   输出应包含证书信息。若要确认不同版本能互相覆盖更新，还应比较各次 APK 的证书指纹是否一致。
-
-请始终保留原始密钥库和密码。配置完成后，后续 release 构建都使用这把密钥；不要为了更新 APK 随意重新生成密钥。
+以往临时 debug 签名的安装包通常不能直接升级到固定签名。先在旧 App 的数据管理中导出完整备份，确认备份和恢复方法可用后再迁移，不要直接卸载。使用同一固定签名的后续版本才具备正常覆盖升级的条件。
 
 ## 安装与首次设置
 
@@ -124,3 +76,31 @@ android-shell/
 - Supabase 项目已按 `docs/push-supabase.sql` 配好离线推送（pg_cron + 边缘函数）。
 - `supabase/functions/push-generate/index.ts` 需要是包含 shellpush 广播的最新版（改动后需重新部署边缘函数）。
 - Realtime 广播用 service key 直接调 HTTP API，无需额外建表或改配置。
+
+### Fixed signing certificate
+
+CI now requires the private `SHELL_SIGNING_BUNDLE` repository Actions secret. Its
+value is a JSON object containing `keystoreBase64`, `storePassword`, `keyAlias`,
+and `keyPassword`. Keep its backup private; never add it to git, workflow inputs,
+issues, or build artifacts. The public SHA-256 fingerprint in
+`signing-certificate.sha256` pins the certificate. CI verifies both debug and
+release APKs before uploading them, and refuses missing or mismatched credentials.
+This replaces the earlier optional four-secret signing setup for CI.
+
+A previously installed APK signed with an ephemeral runner debug key cannot
+usually be updated with this certificate. Export all app data before migration;
+do not uninstall until the backup and a way to restore it have been verified.
+Future APKs signed with this same certificate retain the normal update path.
+
+### Phone-local AI APIs
+
+Shell 1.0.15 adds an origin-scoped `FloatLocalApi` WebMessage transport. Only the
+configured HTTPS site's main frame may invoke it. Requests are limited to numeric
+loopback (or localhost mapped to 127.0.0.1), AI endpoint paths and GET/POST. No
+redirects, cloud proxy, website cookies, arbitrary headers or external HTTP hosts
+are allowed. Replies use bounded, demand-driven chunks; abort/navigation cancels
+the native call. Network security permits cleartext only on loopback. WebView
+mixed-content settings remain at their secure default. Older installed shells
+need an APK update to acquire this native capability; website deployment alone
+cannot add it. Browser usage still requires the local API's CORS support and any
+browser local-network permission.
