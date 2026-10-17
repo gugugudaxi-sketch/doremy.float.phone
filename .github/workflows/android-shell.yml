@@ -27,6 +27,9 @@ jobs:
         with:
           gradle-version: "8.11.1"
 
+      - name: Check signing parser regression fixtures
+        run: python3 scripts/check-android-signing-parser.py
+
       # Compilation is useful even before the signing secret is configured.
       - name: Compile Android sources
         env:

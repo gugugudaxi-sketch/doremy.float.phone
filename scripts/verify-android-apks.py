@@ -13,7 +13,7 @@ for variant in ("debug", "release"):
     apk = Path(f"android-shell/app/build/outputs/apk/{variant}/app-{variant}.apk")
     result = subprocess.run([str(tools[-1]), "verify", "--verbose", "--print-certs", str(apk)], capture_output=True, text=True, check=True)
     output = result.stdout + "\n" + result.stderr
-    digests = re.findall(r"^Signer[^\r\n]* certificate SHA-256 digest:[ \t]*([0-9a-fA-F]{64})[ \t]*$", output, re.MULTILINE)
+    digests = re.findall(r"^(?:V[0-9.]+ )?Signer[^\r\n]* certificate SHA-256 digest:[ \t]*([0-9a-fA-F]{64})[ \t]*$", output, re.MULTILINE)
     if not digests or any(value.lower() != expected for value in digests):
         print("Public signing-tool diagnostics:", repr(output[:5000]))
         observed = ", ".join(value.upper() for value in digests) or "no recognized certificate digest"
