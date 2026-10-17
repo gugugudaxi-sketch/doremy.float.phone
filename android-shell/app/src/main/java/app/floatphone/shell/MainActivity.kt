@@ -53,6 +53,7 @@ import java.io.FileOutputStream
  * 网页每次部署即时生效，本壳只负责原生能力（推送长连接、文件上下行、外链）。
  */
 class MainActivity : AppCompatActivity() {
+    private var localApiBridge: LocalApiBridge? = null
 
     companion object {
         val SITE_URL: String = BuildConfig.SITE_URL
@@ -372,6 +373,7 @@ class MainActivity : AppCompatActivity() {
         CookieManager.getInstance().setAcceptCookie(true)
         CookieManager.getInstance().setAcceptThirdPartyCookies(webView, false)
 
+        localApiBridge = LocalApiBridge(webView, SITE_URL).also { it.attach() }
         webView.addJavascriptInterface(ShellBridge(), "AndroidShell")
         // 桌面小组件桥：独立命名空间，跟通话/截屏那套分开，
         // 免得以後加方法时和 AndroidShell 里几十个方法混在一起。
@@ -384,6 +386,10 @@ class MainActivity : AppCompatActivity() {
         ShellBus.webView = webView
 
         webView.webViewClient = object : WebViewClient() {
+            override fun onPageStarted(view: WebView, url: String?, favicon: Bitmap?) {
+                localApiBridge?.cancelAll()
+                super.onPageStarted(view, url, favicon)
+            }
             override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
                 val url = request.url
                 val scheme = url.scheme ?: return false
@@ -625,6 +631,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     override fun onDestroy() {
+        localApiBridge?.cancelAll()
         if (ShellBus.webView === webView) ShellBus.webView = null
         CookieManager.getInstance().flush()
         webView.destroy()
