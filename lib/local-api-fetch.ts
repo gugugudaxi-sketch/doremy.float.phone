@@ -98,7 +98,10 @@ export async function localApiFetch(url: string, init: RequestInit = {}): Promis
                 controller?.close();
             }
         });
-        timer = setTimeout(() => fail(new Error("手机本地 API 响应超时，请检查本机服务")), 35_000);
+        // Buffered completions may not send headers until generation finishes.
+        // Match the chat request budget; the native transport and caller signal
+        // still enforce their own deadlines and cancellation.
+        timer = setTimeout(() => fail(new Error("手机本地 API 响应超时，请检查本机服务")), 500_000);
         signal?.addEventListener("abort", abort, { once: true });
         try {
             send("start", {

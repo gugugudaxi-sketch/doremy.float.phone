@@ -4,13 +4,13 @@ const vm = require('node:vm');
 const ts = require('typescript');
 const { webcrypto } = require('node:crypto');
 const wait = () => new Promise(r => setImmediate(r));
-function load(window, fetch = () => { throw Error('must not reach remote fetch'); }) {
+function load(window, fetch = () => { throw Error('must not reach remote fetch'); }, timers = { setTimeout, clearTimeout }) {
   const exports = {};
   const code = ts.transpileModule(fs.readFileSync('lib/local-api-fetch.ts', 'utf8'), {
     compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 }
   }).outputText;
   vm.runInNewContext(code, { exports, window, fetch, URL, Headers, Response, ReadableStream,
-    Uint8Array, atob, crypto: webcrypto, DOMException, setTimeout, clearTimeout });
+    Uint8Array, atob, crypto: webcrypto, DOMException, ...timers });
   return exports;
 }
 (async () => {
@@ -20,6 +20,30 @@ function load(window, fetch = () => { throw Error('must not reach remote fetch')
   for (const u of ['http://127.0.0.1:7860/v1', 'http://localhost:7860/v1', 'http://[::1]:7860/v1']) assert.ok(api.isLoopbackApiUrl(u));
   for (const u of ['https://127.0.0.1.evil.test/v1', 'http://localhost.evil/v1', '/api/llm-proxy', 'file:///etc/passwd']) assert.ok(!api.isLoopbackApiUrl(u));
   const emit = (id, type, extra = {}) => bridge.onmessage({ data: JSON.stringify({ id, type, ...extra }) });
+  // Simulate a buffered proxy that sends headers only after 40 seconds.
+  let clock = 0, nextTimer = 0;
+  const deadlines = new Map();
+  const delayedBridge = { onmessage: null, postMessage(s) { sent.push(JSON.parse(s)); } };
+  const delayedApi = load({ FloatLocalApi: delayedBridge }, undefined, {
+    setTimeout(fn, ms) { const id = ++nextTimer; deadlines.set(id, { at: clock + ms, fn }); return id; },
+    clearTimeout(id) { deadlines.delete(id); },
+  });
+  const delayed = delayedApi.localApiFetch('http://127.0.0.1:7860/v1/chat/completions', { method: 'POST', body: '{}' });
+  const delayedId = sent.at(-1).id;
+  clock = 40_000;
+  for (const [id, timer] of deadlines) if (timer.at <= clock) { deadlines.delete(id); timer.fn(); }
+  assert.ok(!sent.some(m => m.id === delayedId && m.type === 'cancel'), 'must not cancel buffered generation at 35s');
+  delayedBridge.onmessage({ data: JSON.stringify({ id: delayedId, type: 'headers', status: 204 }) });
+  assert.equal((await delayed).status, 204);
+  assert.equal(deadlines.size, 0);
+  const expired = delayedApi.localApiFetch('http://localhost:7860/v1/chat/completions');
+  const expiredId = sent.at(-1).id;
+  const expiryCheck = assert.rejects(expired, /响应超时/);
+  clock += 500_000;
+  for (const [id, timer] of deadlines) if (timer.at <= clock) { deadlines.delete(id); timer.fn(); }
+  await expiryCheck;
+  assert.ok(sent.some(m => m.id === expiredId && m.type === 'cancel'));
+  sent.length = 0;
   const first = api.localApiFetch('http://127.0.0.1:7860/v1/models', { headers: { Authorization: 'Bearer test-only' } });
   const id = sent[0].id;
   assert.equal(sent[0].url, 'http://127.0.0.1:7860/v1/models');
